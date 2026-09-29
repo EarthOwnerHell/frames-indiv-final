@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 
 import storage
@@ -20,11 +19,6 @@ from models.orders import (
     show_orders,
     sort_orders,
 )
-
-DATA_DIR = "data"
-ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
-COURIERS_FILE = os.path.join(DATA_DIR, "couriers.json")
-CUSTOMERS_FILE = os.path.join(DATA_DIR, "customers.json")
 
 MENU = """
 === Сервис доставки заказов ===
@@ -133,16 +127,14 @@ def save_all(
     couriers: list[Courier],
 ) -> None:
     """Сохранить все коллекции объектов в JSON-файлы."""
-    storage.save_customers(CUSTOMERS_FILE, customers)
-    storage.save_couriers(COURIERS_FILE, couriers)
-    storage.save_orders(ORDERS_FILE, orders)
+    storage.save_customers(storage.CUSTOMERS_FILE, customers)
+    storage.save_couriers(storage.COURIERS_FILE, couriers)
+    storage.save_orders(storage.ORDERS_FILE, orders)
 
 
 def main() -> None:
     """Точка запуска приложения: загрузка данных и цикл меню."""
-    customers = storage.load_customers(CUSTOMERS_FILE)
-    couriers = storage.load_couriers(COURIERS_FILE)
-    orders = storage.load_orders(ORDERS_FILE, customers, couriers)
+    customers, couriers, orders = storage.load_all()
 
     actions = {
         "1": lambda: show_orders(orders),

@@ -14,6 +14,11 @@ from models import Courier, Customer, Order
 from models.couriers import find_courier_by_id
 from models.customers import find_customer_by_id
 
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+CUSTOMERS_FILE = os.path.join(DATA_DIR, "customers.json")
+COURIERS_FILE = os.path.join(DATA_DIR, "couriers.json")
+ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
+
 
 def load_json(filename: str) -> list[dict]:
     """Загрузить список данных из JSON-файла.
@@ -45,6 +50,7 @@ def save_json(filename: str, data: list[dict]) -> None:
         os.makedirs(directory, exist_ok=True)
     with open(filename, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+        file.write("\n")
 
 
 def load_customers(filename: str) -> list[Customer]:
@@ -158,3 +164,11 @@ def save_orders(filename: str, orders: list[Order]) -> None:
         }
         for order in orders
     ])
+
+
+def load_all() -> tuple[list[Customer], list[Courier], list[Order]]:
+    """Загрузить клиентов, курьеров и заказы со связями между ними."""
+    customers = load_customers(CUSTOMERS_FILE)
+    couriers = load_couriers(COURIERS_FILE)
+    orders = load_orders(ORDERS_FILE, customers, couriers)
+    return customers, couriers, orders
