@@ -1,177 +1,110 @@
 import os
 from datetime import datetime
 
-import couriers
-import orders
 import storage
 import utils
+from models import Courier, Customer, Order
+from models.couriers import show_couriers
+from models.customers import (
+    add_customer,
+    find_customer,
+    find_customer_by_phone,
+    show_customers,
+)
+from models.orders import (
+    build_receipt,
+    cancel_order,
+    create_order,
+    find_orders,
+    order_statistics,
+    show_orders,
+    sort_orders,
+)
 
 DATA_DIR = "data"
 ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
 COURIERS_FILE = os.path.join(DATA_DIR, "couriers.json")
+CUSTOMERS_FILE = os.path.join(DATA_DIR, "customers.json")
 
 MENU = """
 === Сервис доставки заказов ===
 
 1. Показать заказы
 2. Показать курьеров
-3. Оформить новый заказ
-4. Отменить заказ
-5. Найти заказ по имени или телефону
-6. Отсортировать заказы
-7. Статистика по заказам
+3. Показать клиентов
+4. Оформить новый заказ
+5. Отменить заказ
+6. Найти заказ по имени или телефону
+7. Найти клиента
+8. Отсортировать заказы
+9. Статистика по заказам
 0. Выход
 """
 
 
-def build_receipt(order: dict, courier: dict | None) -> str:
-    """Собрать текст квитанции по заказу."""
-    created_at = datetime.fromisoformat(order["created_at"])
-    distance_km = order["distance_km"]
-    weight = order["weight"]
-    goods_sum = order["goods_sum"]
-
-    lines = ["=== Квитанция по заказу ==="]
-    lines.append(
-        "Трек-номер:        "
-        + orders.tracking_number(created_at, order["id"])
-    )
-    lines.append(
-        f"Клиент:            {order['client_name']}, "
-        f"{order['client_phone']}"
-    )
-    lines.append(
-        "Зона доставки:     "
-        f"{orders.delivery_zone(distance_km)} ({distance_km} км)"
-    )
-    lines.append(f"Вес заказа:        {weight} кг")
-
-    if courier is not None:
-        lines.append(
-            f"Курьер:            {courier['name']} ({courier['type']})"
-        )
-    else:
-        lines.append("Курьер:            не назначен")
-
-    lines.append(f"Сумма товаров:     {round(goods_sum, 2)} руб.")
-
-    if orders.is_free_delivery(goods_sum):
-        lines.append(
-            "Доставка:          бесплатно (заказ от "
-            f"{orders.FREE_DELIVERY_FROM} руб.)"
-        )
-    else:
-        cost = orders.delivery_cost(distance_km, weight, goods_sum)
-        lines.append(f"Доставка:          {round(cost, 2)} руб.")
-        surcharge = orders.weight_surcharge(weight)
-        if surcharge > 0.0:
-            lines.append(
-                f"  в т.ч. надбавка за вес: {round(surcharge, 2)} руб."
-            )
-
-    total = orders.total_to_pay(distance_km, weight, goods_sum)
-    payment_name = orders.payment_method_name(order["payment_is_online"])
-    lines.append(
-        f"Итого к оплате:    {round(total, 2)} руб. ({payment_name})"
-    )
-    lines.append(
-        "Заказ создан:      " + created_at.strftime("%d.%m.%Y %H:%M")
-    )
-    planned = orders.planned_delivery_at(created_at, distance_km)
-    minutes = orders.delivery_minutes(distance_km)
-    lines.append(
-        "Плановая доставка: " + planned.strftime("%d.%m.%Y %H:%M")
-        + f" (через {minutes} мин)"
-    )
-
-    courier_is_free = courier is not None
-    status = couriers.order_status(created_at, courier_is_free)
-    if order["cancelled"]:
-        status = "отменён клиентом"
-    lines.append("Статус заказа:     " + status)
-    return "\n".join(lines)
+def select_customer(customers: list[Customer]) -> Customer:
+    """Найти клиента по телефону или зарегистрировать нового."""
+    phone = utils.input_nonempty("Телефон клиента: ")
+    customer = find_customer_by_phone(customers, phone)
+    if customer is not None:
+        print(f"Клиент найден: {customer}")
+        return customer
+    name = utils.input_nonempty("Новый клиент. Имя: ")
+    customer = add_customer(customers, name, phone)
+    print(f"Клиент зарегистрирован: {customer}")
+    return customer
 
 
-def show_orders(order_list: list[dict], courier_list: list[dict]) -> None:
-    """Вывести список заказов в виде таблицы."""
-    if not order_list:
-        print("Заказов пока нет")
-        return
-    for order in order_list:
-        courier = couriers.find_courier_by_id(
-            courier_list, order["courier_id"]
-        )
-        courier_name = courier["name"] if courier else "не назначен"
-        status = "отменён" if order["cancelled"] else "активен"
-        print(
-            f"#{order['id']:<4} {order['client_name']:<20} "
-            f"{order['distance_km']:>5} км  {order['weight']:>5} кг  "
-            f"курьер: {courier_name:<10} [{status}]"
-        )
-
-
-def show_couriers(courier_list: list[dict]) -> None:
-    """Вывести список курьеров и их занятость."""
-    for courier in courier_list:
-        busy_state = "свободен" if courier["is_free"] else "занят"
-        print(
-            f"#{courier['id']} {courier['name']:<10} "
-            f"{courier['type']:<14} [{busy_state}]"
-        )
-
-
-def create_order(order_list: list[dict], courier_list: list[dict]) -> None:
-    """Оформить новый заказ: ввод данных, расчёт и назначение курьера."""
-    client_name = utils.input_nonempty("Имя клиента: ")
-    client_phone = utils.input_nonempty("Телефон клиента: ")
+def create_new_order(
+    orders: list[Order],
+    customers: list[Customer],
+    couriers: list[Courier],
+) -> None:
+    """Оформить новый заказ: выбор клиента, ввод данных, расчёт."""
+    customer = select_customer(customers)
     distance_km = utils.input_float("Расстояние до клиента, км: ")
     weight = utils.input_float("Вес заказа, кг: ")
     goods_sum = utils.input_float("Сумма товаров, руб.: ")
     payment_is_online = utils.input_yes_no("Оплата онлайн?")
-    created_at = datetime.now()
 
-    order = orders.add_order(
-        order_list, client_name, client_phone, distance_km, weight,
-        goods_sum, payment_is_online, created_at,
-    )
-    couriers.assign_courier(courier_list, order, created_at)
-    courier = couriers.find_courier_by_id(
-        courier_list, order["courier_id"]
+    order = create_order(
+        orders, customer, couriers, distance_km, weight, goods_sum,
+        payment_is_online, datetime.now(),
     )
     print()
-    print(build_receipt(order, courier))
+    print(build_receipt(order))
 
 
-def cancel_order_action(
-    order_list: list[dict], courier_list: list[dict]
-) -> None:
-    """Отменить заказ по номеру, освободив назначенного курьера."""
+def cancel_order_action(orders: list[Order]) -> None:
+    """Отменить заказ по номеру; курьер освобождается автоматически."""
     order_id = utils.input_int("Номер заказа для отмены: ")
-    try:
-        order = orders.cancel_order(order_list, order_id)
-    except KeyError as error:
-        print(error)
-        return
-    if order["courier_id"] is not None:
-        couriers.release_courier(courier_list, order["courier_id"])
-    print(f"Заказ #{order_id} отменён")
+    if cancel_order(orders, order_id):
+        print(f"Заказ #{order_id} отменён")
+    else:
+        print(f"Заказ #{order_id} не найден или уже отменён")
 
 
-def find_order_action(order_list: list[dict]) -> None:
+def find_order_action(orders: list[Order]) -> None:
     """Найти заказы по подстроке в имени или телефоне клиента."""
     query = utils.input_nonempty("Имя или телефон клиента: ")
-    found = orders.find_orders(order_list, query)
+    found = find_orders(orders, query)
     if not found:
         print("Ничего не найдено")
         return
-    for order in found:
-        print(f"#{order['id']} {order['client_name']}, "
-              f"{order['client_phone']}")
+    show_orders(found)
 
 
-def sort_orders_action(
-    order_list: list[dict], courier_list: list[dict]
-) -> None:
+def find_customer_action(customers: list[Customer]) -> None:
+    """Найти клиентов по подстроке в имени или телефоне."""
+    query = utils.input_nonempty("Имя или телефон клиента: ")
+    found = find_customer(customers, query)
+    if not found:
+        print("Ничего не найдено")
+        return
+    show_customers(found)
+
+
+def sort_orders_action(orders: list[Order]) -> None:
     """Вывести заказы, отсортированные по выбранному полю."""
     print("Сортировать по: 1 - расстояние, 2 - вес, 3 - сумма товаров")
     choice = utils.input_nonempty("Выберите вариант: ")
@@ -180,12 +113,12 @@ def sort_orders_action(
     if key is None:
         print("Неверный выбор")
         return
-    show_orders(orders.sort_orders(order_list, key), courier_list)
+    show_orders(sort_orders(orders, key))
 
 
-def show_statistics(order_list: list[dict]) -> None:
+def show_statistics(orders: list[Order]) -> None:
     """Вывести статистику по активным заказам."""
-    stats = orders.order_statistics(order_list)
+    stats = order_statistics(orders)
     print(f"Активных заказов:  {stats['count']}")
     print(f"Общая выручка:     {stats['total_revenue']} руб.")
     print(f"Средний чек:       {stats['average_check']} руб.")
@@ -194,19 +127,33 @@ def show_statistics(order_list: list[dict]) -> None:
         print(f"  {zone}: {count}")
 
 
+def save_all(
+    orders: list[Order],
+    customers: list[Customer],
+    couriers: list[Courier],
+) -> None:
+    """Сохранить все коллекции объектов в JSON-файлы."""
+    storage.save_customers(CUSTOMERS_FILE, customers)
+    storage.save_couriers(COURIERS_FILE, couriers)
+    storage.save_orders(ORDERS_FILE, orders)
+
+
 def main() -> None:
-    """Точка запуска приложения: цикл меню."""
-    order_list = storage.load_json(ORDERS_FILE)
-    courier_list = storage.load_json(COURIERS_FILE)
+    """Точка запуска приложения: загрузка данных и цикл меню."""
+    customers = storage.load_customers(CUSTOMERS_FILE)
+    couriers = storage.load_couriers(COURIERS_FILE)
+    orders = storage.load_orders(ORDERS_FILE, customers, couriers)
 
     actions = {
-        "1": lambda: show_orders(order_list, courier_list),
-        "2": lambda: show_couriers(courier_list),
-        "3": lambda: create_order(order_list, courier_list),
-        "4": lambda: cancel_order_action(order_list, courier_list),
-        "5": lambda: find_order_action(order_list),
-        "6": lambda: sort_orders_action(order_list, courier_list),
-        "7": lambda: show_statistics(order_list),
+        "1": lambda: show_orders(orders),
+        "2": lambda: show_couriers(couriers),
+        "3": lambda: show_customers(customers),
+        "4": lambda: create_new_order(orders, customers, couriers),
+        "5": lambda: cancel_order_action(orders),
+        "6": lambda: find_order_action(orders),
+        "7": lambda: find_customer_action(customers),
+        "8": lambda: sort_orders_action(orders),
+        "9": lambda: show_statistics(orders),
     }
 
     while True:
@@ -219,8 +166,7 @@ def main() -> None:
             print("Неверный выбор, попробуйте снова")
             continue
         action()
-        storage.save_json(ORDERS_FILE, order_list)
-        storage.save_json(COURIERS_FILE, courier_list)
+        save_all(orders, customers, couriers)
 
     print("До свидания!")
 

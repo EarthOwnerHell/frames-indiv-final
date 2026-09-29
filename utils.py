@@ -1,5 +1,7 @@
 """Вспомогательные функции безопасного ввода данных с консоли."""
 
+import math
+
 
 def input_nonempty(prompt: str) -> str:
     """Запросить у пользователя непустую строку."""
@@ -10,14 +12,21 @@ def input_nonempty(prompt: str) -> str:
         print("Значение не может быть пустым, попробуйте снова")
 
 
-def input_float(prompt: str) -> float:
-    """Запросить у пользователя дробное число."""
+def input_float(prompt: str, min_value: float = 0.0) -> float:
+    """Запросить у пользователя дробное число не меньше min_value."""
     while True:
         raw_value = input(prompt).strip().replace(",", ".")
         try:
-            return float(raw_value)
+            value = float(raw_value)
+            if not math.isfinite(value):
+                raise ValueError(raw_value)
         except ValueError:
             print("Введите число, например 12.5")
+            continue
+        if value < min_value:
+            print(f"Значение не может быть меньше {min_value}")
+            continue
+        return value
 
 
 def input_int(prompt: str) -> int:
