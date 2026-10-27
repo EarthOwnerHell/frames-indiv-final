@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if courier %}
+        {{ courier.name }} – Сервис доставки
+    {% else %}
+        Курьер не найден – Сервис доставки
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if courier %}
+        <div class="card detail-card">
+            <div class="card-body">
+                <h1 class="h4 card-title">
+                    {{ courier.name }}
+                    {% include "couriers/includes/courier_busy.html" %}
+                </h1>
+                <p class="card-text"><strong>ID:</strong> {{ courier.id }}</p>
+                <p class="card-text"><strong>Тип:</strong> {{ courier.type }}</p>
+
+                <h2 class="h6 mt-3">Заказы курьера ({{ courier_orders|length }})</h2>
+                <ul class="list-group">
+                    {% for order in courier_orders %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <a href="{% url 'orders:order_detail' order.id %}">
+                                #{{ order.id }} – {{ order.customer_name }}
+                            </a>
+                            {% include "orders/includes/order_status.html" %}
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item">Заказов нет</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% else %}
+        <h1 class="text-danger">Курьер не найден</h1>
+        <p>Курьер с указанным идентификатором отсутствует.</p>
+    {% endif %}
+
+    <a href="{% url 'couriers:couriers' %}" class="btn btn-outline-secondary mt-3">← к списку курьеров</a>
+{% endblock %}

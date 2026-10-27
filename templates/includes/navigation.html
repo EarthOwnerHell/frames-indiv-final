@@ -1,0 +1,18 @@
+{% load static %}
+<nav class="navbar navbar-expand bg-dark mb-4" data-bs-theme="dark">
+    <div class="container">
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'homepage:index' %}">
+            <img
+                src="{% static 'homepage/img/logo.png' %}"
+                alt="Сервис доставки"
+                class="delivery-logo me-2"
+            >
+            Доставка
+        </a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="{% url 'orders:orders' %}">Заказы</a>
+            <a class="nav-link" href="{% url 'couriers:couriers' %}">Курьеры</a>
+            <a class="nav-link" href="{% url 'orders:statistics' %}">Статистика</a>
+        </div>
+    </div>
+</nav>

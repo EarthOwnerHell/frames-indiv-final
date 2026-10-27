@@ -1,0 +1,7 @@
+{% if order.status == "отменён" %}
+    <span class="badge bg-secondary order-status order-status-cancelled">{{ order.status }}</span>
+{% elif order.status == "ожидает курьера" %}
+    <span class="badge bg-warning text-dark order-status order-status-waiting">{{ order.status }}</span>
+{% else %}
+    <span class="badge bg-success order-status order-status-active">{{ order.status }}</span>
+{% endif %}

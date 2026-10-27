@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if order %}
+        Заказ #{{ order.id }} – Сервис доставки
+    {% else %}
+        Заказ не найден – Сервис доставки
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if order %}
+        <div class="card detail-card">
+            <div class="card-body">
+                <h1 class="h4 card-title">
+                    Заказ #{{ order.id }}
+                    {% include "orders/includes/order_status.html" %}
+                </h1>
+                <p class="card-text text-muted">Трек-номер: {{ order.tracking_number }}</p>
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Клиент</dt>
+                    <dd class="col-sm-8">{{ order.customer.name }}, {{ order.customer.phone }}</dd>
+
+                    <dt class="col-sm-4">Курьер</dt>
+                    <dd class="col-sm-8">
+                        {% if order.courier %}
+                            <a href="{% url 'couriers:courier_detail' order.courier.id %}">{{ order.courier.name }}</a>
+                            ({{ order.courier.type }})
+                        {% else %}
+                            не назначен
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Зона доставки</dt>
+                    <dd class="col-sm-8">{{ order.zone }} ({{ order.distance_km }} км)</dd>
+
+                    <dt class="col-sm-4">Вес</dt>
+                    <dd class="col-sm-8">{{ order.weight }} кг</dd>
+
+                    <dt class="col-sm-4">Сумма товаров</dt>
+                    <dd class="col-sm-8">{{ order.goods_sum|floatformat:2 }} руб.</dd>
+
+                    <dt class="col-sm-4">Доставка</dt>
+                    <dd class="col-sm-8">{{ order.delivery_cost|floatformat:2 }} руб.</dd>
+
+                    <dt class="col-sm-4">Итого к оплате</dt>
+                    <dd class="col-sm-8">
+                        {{ order.total_to_pay|floatformat:2 }} руб. ({{ payment_method }})
+                    </dd>
+
+                    <dt class="col-sm-4">Создан</dt>
+                    <dd class="col-sm-8">{{ order.created_at|date:"d.m.Y H:i" }}</dd>
+
+                    <dt class="col-sm-4">Плановая доставка</dt>
+                    <dd class="col-sm-8">{{ order.planned_delivery_at|date:"d.m.Y H:i" }}</dd>
+                </dl>
+            </div>
+        </div>
+    {% else %}
+        <h1 class="text-danger">Заказ не найден</h1>
+        <p>Заказ с указанным номером отсутствует.</p>
+    {% endif %}
+
+    <a href="{% url 'orders:orders' %}" class="btn btn-outline-secondary mt-3">← к списку заказов</a>
+{% endblock %}

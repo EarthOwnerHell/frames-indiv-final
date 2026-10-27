@@ -1,0 +1,49 @@
+/* Собственные стили сервиса доставки поверх Bootstrap */
+
+:root {
+    --delivery-accent: #f97316;
+    --delivery-muted: #6b7280;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+.delivery-logo {
+    width: 32px;
+    height: 32px;
+}
+
+.courier-card,
+.stat-card {
+    margin-bottom: 0.75rem;
+    border-left: 4px solid var(--delivery-accent);
+    border-radius: 8px;
+}
+
+.detail-card {
+    border-top: 4px solid var(--delivery-accent);
+}
+
+.orders-table th {
+    color: var(--delivery-muted);
+    font-weight: 600;
+}
+
+.order-status,
+.courier-busy {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.site-footer {
+    padding: 1.5rem 0;
+    color: var(--delivery-muted);
+    border-top: 1px solid #e5e7eb;
+}

@@ -1,83 +1,106 @@
+import math
+
 from django.http import HttpRequest, HttpResponse
-from django.utils.html import escape
+from django.shortcuts import render
 
-import storage
-from homepage.views import page
-from models import Courier
-from models.couriers import find_courier_by_id
-from orders.views import order_status_badge
-
-
-def busy_badge(courier: Courier) -> str:
-    """HTML-бейдж занятости курьера."""
-    if courier.is_free:
-        return '<span class="badge bg-success">свободен</span>'
-    return '<span class="badge bg-danger">занят</span>'
+from db.database import fetch_all, fetch_one
+from models.couriers import courier_type
 
 
 def couriers(request: HttpRequest) -> HttpResponse:
-    """Страница /couriers/: список курьеров из data/couriers.json."""
-    _, couriers_list, _ = storage.load_all()
-    items = ""
-    for courier in couriers_list:
-        items += f"""
-        <li class="list-group-item d-flex justify-content-between">
-            <a href="/couriers/{courier.id}/">
-                {escape(courier.name)} – {courier.type}
-            </a>
-            {busy_badge(courier)}
-        </li>
-        """
-    if not items:
-        items = '<li class="list-group-item">Курьеров пока нет</li>'
-    content = f"""
-    <h1>Курьеры</h1>
-    <ul class="list-group">{items}</ul>
-    """
-    return HttpResponse(page("Курьеры", content))
+    """Страница /couriers/: список курьеров из таблицы couriers."""
+    couriers_list = fetch_all("""
+        SELECT
+            id,
+            name,
+            type,
+            is_free
+        FROM couriers
+        ORDER BY name
+    """)
+    context = {
+        "couriers": couriers_list,
+    }
+    return render(request, "couriers/courier_list.html", context)
 
 
 def courier_detail(request: HttpRequest, courier_id: int) -> HttpResponse:
     """Страница /couriers/<id>/: карточка курьера и его заказы или 404."""
-    _, couriers_list, orders_list = storage.load_all()
-    courier = find_courier_by_id(couriers_list, courier_id)
-    if courier is None:
-        content = """
-        <h1 class="text-danger">Курьер не найден</h1>
-        <a href="/couriers/" class="btn btn-outline-secondary">
-            ← к списку курьеров
-        </a>
-        """
-        return HttpResponse(page("Курьер не найден", content), status=404)
+    courier = fetch_one("""
+        SELECT
+            id,
+            name,
+            type,
+            is_free
+        FROM couriers
+        WHERE id = ?
+    """, (courier_id,))
+    courier_orders = []
+    if courier is not None:
+        courier_orders = fetch_all("""
+            SELECT
+                orders.id,
+                customers.name AS customer_name,
+                CASE
+                    WHEN orders.is_cancelled = 1 THEN 'отменён'
+                    WHEN orders.courier_id IS NULL THEN 'ожидает курьера'
+                    ELSE 'передан курьеру'
+                END AS status
+            FROM orders
+            JOIN customers
+                ON orders.customer_id = customers.id
+            WHERE orders.courier_id = ?
+            ORDER BY orders.created_at DESC
+        """, (courier_id,))
+    context = {
+        "courier": courier,
+        "courier_orders": courier_orders,
+    }
+    return render(
+        request,
+        "couriers/courier_detail.html",
+        context,
+        status=404 if courier is None else 200,
+    )
 
-    items = ""
-    for order in orders_list:
-        if order.courier is courier:
-            items += f"""
-            <li class="list-group-item d-flex justify-content-between">
-                <a href="/orders/{order.id}/">
-                    #{order.id} – {escape(order.customer.name)}
-                </a>
-                {order_status_badge(order)}
-            </li>
-            """
-    if not items:
-        items = '<li class="list-group-item">Заказов нет</li>'
-    content = f"""
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title">{escape(courier.name)}
-                {busy_badge(courier)}</h5>
-            <p class="card-text"><strong>ID:</strong> {courier.id}</p>
-            <p class="card-text">
-                <strong>Тип:</strong> {courier.type}
-            </p>
-            <h6 class="mt-3">Заказы курьера</h6>
-            <ul class="list-group mb-3">{items}</ul>
-            <a href="/couriers/" class="btn btn-outline-secondary">
-                ← к списку курьеров
-            </a>
-        </div>
-    </div>
+
+def available(request: HttpRequest) -> HttpResponse:
+    """Страница /couriers/available/: подбор свободного курьера по весу.
+
+    Тип курьера определяется правилом сервиса courier_type(), а поиск
+    свободных курьеров этого типа выполняется SQL-запросом.
     """
-    return HttpResponse(page(escape(courier.name), content))
+    weight_text = request.GET.get("weight", "").strip().replace(",", ".")
+    weight = None
+    needed_type = None
+    error = None
+    couriers_list = []
+    if weight_text:
+        try:
+            weight = float(weight_text)
+        except ValueError:
+            error = "Вес должен быть числом, например 7.5"
+        else:
+            if not math.isfinite(weight) or weight < 0:
+                error = "Вес должен быть неотрицательным числом"
+                weight = None
+    if weight is not None:
+        needed_type = courier_type(weight)
+        couriers_list = fetch_all("""
+            SELECT
+                id,
+                name,
+                type
+            FROM couriers
+            WHERE type = ?
+              AND is_free = 1
+            ORDER BY name
+        """, (needed_type,))
+    context = {
+        "weight_text": weight_text,
+        "weight": weight,
+        "needed_type": needed_type,
+        "error": error,
+        "couriers": couriers_list,
+    }
+    return render(request, "couriers/available.html", context)

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика – Сервис доставки{% endblock %}
+
+{% block content %}
+    <h1>Статистика заказов</h1>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-muted">Активных заказов</h2>
+                    <p class="display-6 mb-0">{{ summary.orders_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-muted">Сумма товаров</h2>
+                    <p class="display-6 mb-0">{{ summary.goods_total|default:0|floatformat:2 }} руб.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-muted">Средний чек товаров</h2>
+                    <p class="display-6 mb-0">{{ summary.goods_avg|default:0|floatformat:2 }} руб.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <section class="col-lg-6">
+            <h2 class="h5">Заказы по статусам</h2>
+            <ul class="list-group">
+                {% for item in by_status %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        {% include "orders/includes/order_status.html" with order=item %}
+                        <span>{{ item.orders_count }}</span>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item">Заказов пока нет</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="col-lg-6">
+            <h2 class="h5">Ожидают курьера</h2>
+            <ul class="list-group">
+                {% for order in waiting_orders %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <a href="{% url 'orders:order_detail' order.id %}">
+                            #{{ order.id }} – {{ order.customer_name }}
+                        </a>
+                        <span class="text-muted">{{ order.weight }} кг, {{ order.created_at_display }}</span>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item">Все активные заказы переданы курьерам</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="col-lg-6">
+            <h2 class="h5">Нагрузка курьеров</h2>
+            <table class="table bg-white">
+                <thead>
+                    <tr>
+                        <th>Курьер</th>
+                        <th class="text-end">Всего заказов</th>
+                        <th class="text-end">Активных</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for courier in by_courier %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'couriers:courier_detail' courier.id %}">{{ courier.name }}</a>
+                                <span class="text-muted">({{ courier.type }})</span>
+                            </td>
+                            <td class="text-end">{{ courier.orders_count }}</td>
+                            <td class="text-end">{{ courier.active_count }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3">Курьеров пока нет</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="col-lg-6">
+            <h2 class="h5">Активные заказы по клиентам</h2>
+            <table class="table bg-white">
+                <thead>
+                    <tr>
+                        <th>Клиент</th>
+                        <th class="text-end">Заказов</th>
+                        <th class="text-end">Сумма товаров</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in by_customer %}
+                        <tr>
+                            <td>{{ customer.customer_name }}</td>
+                            <td class="text-end">{{ customer.orders_count }}</td>
+                            <td class="text-end">{{ customer.goods_total|floatformat:2 }} руб.</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3">Клиентов пока нет</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <h3 class="h6">Постоянные клиенты (активных заказов больше {{ regular_min_orders }})</h3>
+            {% if regular_customers %}
+                <ul>
+                    {% for customer in regular_customers %}
+                        <li>{{ customer.customer_name }} – {{ customer.orders_count }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted">Пока нет</p>
+            {% endif %}
+        </section>
+    </div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Главная – Сервис доставки{% endblock %}
+
+{% block content %}
+    <h1 class="display-5">Сервис доставки заказов</h1>
+    <p class="lead">
+        Приём заказов, расчёт стоимости и срока доставки,
+        назначение курьера и отслеживание статуса.
+    </p>
+    <p>Основные разделы:</p>
+    <a href="{% url 'orders:orders' %}" class="btn btn-primary me-2">Заказы</a>
+    <a href="{% url 'couriers:couriers' %}" class="btn btn-secondary me-2">Курьеры</a>
+    <a href="{% url 'orders:statistics' %}" class="btn btn-outline-secondary">Статистика</a>
+
+    <div class="row mt-4 g-3">
+        <div class="col-md-4">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-muted">Курьеры</h2>
+                    <p class="display-6 mb-0">
+                        {{ couriers_summary.free_count|default:0 }} / {{ couriers_summary.couriers_count }}
+                    </p>
+                    <p class="mb-0">свободны сейчас</p>
+                    <a href="{% url 'couriers:available' %}">подобрать курьера</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-muted">Последние заказы</h2>
+                    <ul class="list-group list-group-flush">
+                        {% for order in latest_orders %}
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <a href="{% url 'orders:order_detail' order.id %}">
+                                    #{{ order.id }} от {{ order.created_at_display }}
+                                </a>
+                                <span>
+                                    {{ order.goods_sum|floatformat:2 }} руб.
+                                    {% include "orders/includes/order_status.html" %}
+                                </span>
+                            </li>
+                        {% empty %}
+                            <li class="list-group-item px-0">Заказов пока нет</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

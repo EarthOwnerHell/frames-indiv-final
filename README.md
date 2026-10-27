@@ -154,7 +154,7 @@ Order
 
 - `delivery/` - пакет настроек Django-проекта (`settings.py`,
   корневой `urls.py`, `asgi.py`, `wsgi.py`);
-- `homepage` - главная страница и общий HTML-каркас `page()`;
+- `homepage` - главная страница и статические файлы сайта;
 - `orders` - страницы заказов;
 - `couriers` - страницы курьеров.
 
@@ -175,7 +175,6 @@ Order
 Маршруты разделены на два уровня: корневой `delivery/urls.py` через
 `include()` передаёт адреса в `urls.py` приложений. Для несуществующего
 заказа или курьера возвращается страница «не найден» с кодом 404.
-Пользовательские данные (имена, телефоны) выводятся через `escape()`.
 
 ### Что используется из ПР3
 
@@ -191,6 +190,190 @@ Order
 консольной версии: в веб-интерфейсе они появятся вместе с формами и
 POST-запросами.
 
+## Шаблоны Django (ПР6)
+
+Веб-интерфейс переведён с формирования HTML-строк в Python на систему
+шаблонов Django. Функция `page()` удалена: view-функции только готовят
+данные, передают их в шаблон через контекст и вызывают `render()`.
+
+```
+Было (ПР5):  view -> HTML-строка -> page() -> HttpResponse
+Стало (ПР6): view -> context -> render() -> шаблон страницы -> base.html
+```
+
+### Шаблоны
+
+| Шаблон | Назначение |
+|--------|------------|
+| `templates/base.html` | общий каркас: `<head>`, Bootstrap, свой CSS, навигация, подвал, JS; блоки `title` и `content` |
+| `templates/includes/navigation.html` | навигация с логотипом (подключается в `base.html`) |
+| `homepage/templates/homepage/index.html` | главная страница |
+| `orders/templates/orders/order_list.html` | таблица заказов |
+| `orders/templates/orders/order_detail.html` | карточка заказа / «Заказ не найден» |
+| `orders/templates/orders/includes/order_status.html` | бейдж статуса заказа (в списке, в карточке заказа и курьера) |
+| `couriers/templates/couriers/courier_list.html` | список курьеров |
+| `couriers/templates/couriers/courier_detail.html` | карточка курьера и его заказы / «Курьер не найден» |
+| `couriers/templates/couriers/includes/courier_card.html` | карточка курьера в списке |
+| `couriers/templates/couriers/includes/courier_busy.html` | бейдж занятости курьера |
+
+Каталог шаблонов уровня проекта подключён в `settings.py`
+(`TEMPLATES["DIRS"] = [BASE_DIR / "templates"]`), шаблоны приложений
+находятся через `APP_DIRS`.
+
+### Django Template Language
+
+- **Наследование** - все страницы начинаются с `{% extends "base.html" %}`
+  и переопределяют `{% block title %}` и `{% block content %}`.
+- **Включаемые шаблоны** - `{% include %}` для навигации, карточки
+  курьера и бейджей статуса заказа / занятости курьера.
+- **Контекст** - например, `{"orders": orders_list}` во view и
+  `{% for order in orders %}` в шаблоне.
+- **Циклы и условия** - `{% for %}` с `{% empty %}` для пустых списков,
+  `{% if %}` / `{% elif %}` для статуса заказа, занятости курьера,
+  наличия курьера у заказа и страниц «не найден».
+- **Фильтры** - `length` (количество заказов и курьеров), `default`
+  (имя курьера), `floatformat:2` (денежные суммы), `date:"d.m.Y H:i"`
+  (время создания и плановой доставки), `capfirst` (тип курьера).
+  Фильтры только форматируют данные, расчёты остаются в методах `Order`.
+- **Экранирование** - пользовательские данные экранируются
+  автоматически, ручной `escape()` больше не нужен.
+
+### Именованные URL и пространства имён
+
+В `urls.py` приложений заданы `app_name` (`homepage`, `orders`,
+`couriers`), ссылки в шаблонах строятся через `{% url %}`:
+
+```
+{% url 'homepage:index' %}
+{% url 'orders:orders' %}            {% url 'orders:order_detail' order.id %}
+{% url 'couriers:couriers' %}        {% url 'couriers:courier_detail' courier.id %}
+```
+
+### Статические файлы
+
+Каталог `homepage/static/homepage/`, подключение через `{% load static %}`
+и `{% static %}` в `base.html` и `navigation.html`:
+
+| Файл | Где используется |
+|------|------------------|
+| `css/style.css` | `base.html`; классы `courier-card`, `detail-card`, `order-status`, `courier-busy`, `site-footer` и др. |
+| `js/main.js` | `base.html` - выводит текущий год в подвале |
+| `img/logo.png` | `navigation.html` - логотип сервиса |
+
+Bootstrap используется для базовой вёрстки, собственный CSS - для
+оформления элементов проекта.
+
+## База данных SQLite и SQL (ПР7)
+
+Веб-часть получает данные из реляционной базы SQLite с помощью
+SQL-запросов (модуль `sqlite3`, без Django ORM). JSON-файлы остаются
+исходными данными и хранилищем консольной версии: они однократно
+переносятся в базу скриптом импорта.
+
+```
+ПР5–ПР6: JSON -> storage.py -> объекты -> view -> шаблон
+ПР7:     JSON -> db/import_json.py -> SQLite
+         SQLite -> SQL (sqlite3) -> view -> context -> шаблон -> страница
+```
+
+### Структура базы данных
+
+Файл базы: `data/delivery.sqlite`, схема: `sql/schema.sql`.
+
+Таблица `customers` - клиенты:
+
+| Поле | Тип | Назначение |
+|------|-----|------------|
+| `id` | INTEGER | первичный ключ |
+| `name` | TEXT NOT NULL | имя клиента |
+| `phone` | TEXT NOT NULL | телефон |
+
+Таблица `couriers` - курьеры:
+
+| Поле | Тип | Назначение |
+|------|-----|------------|
+| `id` | INTEGER | первичный ключ |
+| `name` | TEXT NOT NULL | имя курьера |
+| `type` | TEXT NOT NULL | пеший курьер / велокурьер / автокурьер (CHECK) |
+| `is_free` | INTEGER NOT NULL | 1 - свободен, 0 - занят |
+
+Таблица `orders` - заказы:
+
+| Поле | Тип | Назначение |
+|------|-----|------------|
+| `id` | INTEGER | первичный ключ |
+| `customer_id` | INTEGER NOT NULL | внешний ключ → `customers.id` |
+| `courier_id` | INTEGER | внешний ключ → `couriers.id`, NULL - курьер не назначен |
+| `distance_km` | REAL NOT NULL | расстояние до клиента, км (CHECK ≥ 0) |
+| `weight` | REAL NOT NULL | вес заказа, кг (CHECK ≥ 0) |
+| `goods_sum` | REAL NOT NULL | сумма товаров, руб. (CHECK ≥ 0) |
+| `payment_is_online` | INTEGER NOT NULL | 1 - онлайн-оплата, 0 - наличные |
+| `created_at` | TEXT NOT NULL | время создания, ISO 8601 `YYYY-MM-DDTHH:MM:SS` |
+| `is_cancelled` | INTEGER NOT NULL | 1 - заказ отменён, 0 - активен |
+
+Связи: один клиент - много заказов, один курьер - много заказов, у
+заказа ровно один клиент и не более одного курьера.
+
+### Модули работы с базой
+
+- `db/database.py` - `get_connection()` открывает соединение,
+  включает `PRAGMA foreign_keys = ON` и `row_factory = sqlite3.Row`
+  (доступ к полям по имени: `row["name"]` в Python, `{{ row.name }}`
+  в шаблоне); `fetch_all()` / `fetch_one()` выполняют запрос и закрывают
+  соединение; `create_schema()` выполняет `sql/schema.sql`.
+- `db/import_json.py` - создаёт таблицы и переносит в них
+  `data/customers.json`, `data/couriers.json`, `data/orders.json` в одной
+  транзакции (`commit()` / `rollback()`). Таблицы предварительно
+  очищаются, поэтому повторный запуск безопасен.
+
+### SQL-запросы
+
+Все запросы проверены в SQLite CLI и сохранены в `sql/queries.sql`
+(с комментариями); те же запросы выполняются в view-функциях.
+Значения из URL и форм передаются параметрами `?` (параметризованные
+запросы), а не подставляются в текст SQL.
+
+| № | Запрос | Приёмы SQL | Где используется |
+|---|--------|------------|------------------|
+| 1 | список курьеров | SELECT, ORDER BY | `/couriers/` |
+| 2 | три последних заказа | ORDER BY, LIMIT, `strftime`, CASE | `/` |
+| 3 | курьер по id | WHERE, параметр | `/couriers/<id>/` |
+| 4 | свободные курьеры нужного типа | WHERE … AND, параметр | `/couriers/available/` |
+| 5 | заказы с клиентом и курьером | JOIN, LEFT JOIN | `/orders/` |
+| 6 | полная информация о заказе | JOIN, LEFT JOIN, WHERE, параметр | `/orders/<id>/` |
+| 7 | заказы курьера | JOIN, WHERE, параметр | `/couriers/<id>/` |
+| 8 | заказы, ожидающие курьера | JOIN, WHERE … IS NULL | `/orders/statistics/` |
+| 9 | сводка по активным заказам | COUNT, SUM, AVG, ROUND | `/orders/statistics/` |
+| 10 | всего / свободных курьеров | COUNT, SUM | `/` |
+| 11 | заказы по статусам | GROUP BY, CASE, COUNT | `/orders/statistics/` |
+| 12 | нагрузка курьеров | LEFT JOIN, GROUP BY, COUNT(CASE …) | `/orders/statistics/` |
+| 13 | активные заказы по клиентам | LEFT JOIN, GROUP BY, SUM, COALESCE | `/orders/statistics/` |
+| 14 | постоянные клиенты | JOIN, GROUP BY, HAVING, параметр | `/orders/statistics/` |
+
+Статус заказа в запросах вычисляется выражением CASE по тем же
+правилам, что и свойство `Order.status`. Расчёты по тарифам (зона,
+стоимость доставки, сроки, трек-номер) в SQL не дублируются: на
+странице заказа строка результата превращается в объекты `Customer`,
+`Courier` и `Order` (`orders.views.order_from_row()`), и расчёт
+выполняют их методы.
+
+### Страницы, работающие с базой
+
+| URL | Сценарий |
+|-----|----------|
+| `/` | сводка по курьерам и последние заказы |
+| `/orders/` | все заказы с клиентом, курьером, суммой и статусом |
+| `/orders/<id>/` | карточка заказа с расчётом стоимости и сроков |
+| `/orders/statistics/` | статистика: сводка, статусы, нагрузка курьеров, клиенты, заказы без курьера |
+| `/couriers/` | список курьеров |
+| `/couriers/<id>/` | карточка курьера и его заказы |
+| `/couriers/available/?weight=7.5` | подбор свободного курьера по весу заказа (форма GET) |
+
+Новые разделы встроены в навигацию: «Статистика» в общем меню, подбор
+курьера - ссылкой из раздела «Курьеры» и с главной страницы. Все
+ссылки строятся через `{% url %}` (`orders:statistics`,
+`couriers:available`).
+
 ## Структура проекта
 
 ```
@@ -201,10 +384,21 @@ frames-indiv-final/
 │   ├── urls.py          # корневая маршрутизация
 │   ├── asgi.py
 │   └── wsgi.py
-├── homepage/            # приложение: главная страница, каркас page()
-├── orders/              # приложение: страницы заказов
+├── templates/           # шаблоны уровня проекта (ПР6)
+│   ├── base.html
+│   └── includes/navigation.html
+├── homepage/            # приложение: главная страница
+│   ├── templates/homepage/index.html
+│   └── static/homepage/ # css/style.css, js/main.js, img/logo.png
+├── orders/              # приложение: страницы заказов и статистика
+│   └── templates/orders/
+│       ├── order_list.html, order_detail.html, statistics.html
+│       └── includes/order_status.html
 ├── couriers/            # приложение: страницы курьеров
-│   (в каждом приложении: views.py, urls.py, apps.py, admin.py,
+│   └── templates/couriers/
+│       ├── courier_list.html, courier_detail.html, available.html
+│       └── includes/courier_card.html, courier_busy.html
+│   (в каждом приложении также: views.py, urls.py, apps.py, admin.py,
 │    models.py, tests.py, migrations/)
 ├── main.py              # консольная версия приложения (ПР3)
 ├── models/              # классы предметной области (ПР3)
@@ -214,16 +408,25 @@ frames-indiv-final/
 │   └── orders.py        # класс Order, тарифы и функции работы с заказами
 ├── storage.py           # преобразование JSON ↔ объекты, пути к данным
 ├── utils.py             # безопасный ввод данных с консоли
+├── db/                  # работа с SQLite (ПР7)
+│   ├── __init__.py
+│   ├── database.py      # подключение, fetch_all(), fetch_one()
+│   └── import_json.py   # перенос данных из JSON в SQLite
+├── sql/
+│   ├── schema.sql       # создание таблиц
+│   └── queries.sql      # проверенные SQL-запросы проекта
 ├── data/
 │   ├── customers.json
 │   ├── couriers.json
-│   └── orders.json
+│   ├── orders.json
+│   └── delivery.sqlite  # база данных (создаётся импортом)
 ├── tests/
 │   ├── test_customers.py
 │   ├── test_couriers.py
 │   ├── test_orders.py
 │   ├── test_storage.py
-│   └── test_web.py      # страницы, маршруты, коды 404
+│   ├── test_db.py       # схема, импорт, внешние ключи, queries.sql
+│   └── test_web.py      # страницы, шаблоны, статика, коды 404
 ├── setup.cfg            # настройки pytest и flake8
 └── requirements.txt
 ```
@@ -259,6 +462,13 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+Создание базы данных и перенос в неё данных из JSON (повторный запуск
+пересоздаёт данные базы по текущим JSON-файлам):
+
+```
+python -m db.import_json
+```
+
 Веб-версия (Django):
 
 ```
@@ -268,10 +478,17 @@ python manage.py runserver
 
 После запуска открыть в браузере http://127.0.0.1:8000/
 
-Консольная версия (сохранена с ПР3):
+Консольная версия (сохранена с ПР3, работает с JSON-файлами; после
+изменений в консоли перенесите их в базу командой `python -m db.import_json`):
 
 ```
 python main.py
+```
+
+Проверка запросов в SQLite CLI:
+
+```
+sqlite3 data/delivery.sqlite < sql/queries.sql
 ```
 
 Запуск автоматизированных тестов:
@@ -283,7 +500,11 @@ pytest -v
 Тесты проверяют объекты и методы классов, связи заказа с клиентом и
 курьером, правило занятости курьера, сохранение и загрузку JSON, а
 также веб-страницы: коды ответов, отображение данных, ссылки между
-страницами, экранирование и ответ 404 для несуществующих объектов.
+страницами, наследование шаблонов, подключение статики, экранирование
+и ответ 404 для несуществующих объектов. Веб-тесты работают с временной
+базой SQLite, которую заполняет тот же скрипт импорта; `test_db.py`
+проверяет схему, внешние ключи, повторный импорт и выполнимость всех
+запросов из `sql/queries.sql`.
 
 Проверка качества кода линтером:
 
@@ -295,10 +516,9 @@ flake8
 
 На следующих этапах планируется:
 
-- переход на Django-шаблоны (`templates/`, `render()`) вместо `page()`;
-- перенос `Customer`, `Courier` и `Order` в модели Django ORM;
+- перенос `Customer`, `Courier` и `Order` в модели Django ORM и переход
+  с SQL-запросов через `sqlite3` на ORM;
 - формы оформления и отмены заказа, поиск и сортировка в веб-интерфейсе;
-- подключение базы данных и ORM для хранения заказов, клиентов и курьеров;
 - реализация пользователей, регистрации и разграничения доступа (клиент / курьер / оператор);
 - разработка REST API для мобильного приложения курьера;
 - контейнеризация приложения в Docker;

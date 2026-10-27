@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Курьеры – Сервис доставки{% endblock %}
+
+{% block content %}
+    <h1>Курьеры</h1>
+    <p class="text-muted">
+        Всего курьеров: {{ couriers|length }} ·
+        <a href="{% url 'couriers:available' %}">подобрать свободного курьера</a>
+    </p>
+
+    {% for courier in couriers %}
+        {% include "couriers/includes/courier_card.html" %}
+    {% empty %}
+        <p>Курьеров пока нет</p>
+    {% endfor %}
+{% endblock %}
